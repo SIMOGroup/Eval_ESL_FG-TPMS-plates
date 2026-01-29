@@ -1,0 +1,94 @@
+function [K] = cal_Stiffness_Matrices_2D_CPT(IGA,Plate)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Calculate stiffness matrices with 3-Dof 2D CPT plate models %%
+% Author: Kim Q. Tran, H. Nguyen-Xuan
+% Contact: CIRTech Institude, HUTECH university, Vietnam
+% Email: tq.kim@hutech.edu.vn, ngx.hung@hutech.edu.vn
+% ! This work can be used, modified, and shared under the MIT License
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Used parameters from IGA
+uKnot = IGA.NURBS.uKnot; vKnot = IGA.NURBS.vKnot;
+Inn = IGA.NURBS.Inn; Ien = IGA.NURBS.Ien; nel = IGA.NURBS.nel;
+sdof = IGA.params.sdof; ndof = IGA.params.ndof; nGauss = IGA.params.nGauss; 
+
+%% Used parameters from Plate
+Db = Plate.mat_mat.D.Db;
+
+%% ===== Initial stiffness matrices =====
+I_idx = zeros(size(Ien,1)*(size(Ien,2)*ndof)^2,1); J_idx = I_idx; V_idx = I_idx;
+
+%% ===== Initial Gauss integration =====
+[Pg, Wg] = gen_Gauss_point(1,-1,nGauss);
+nel_nza = 0; % Number of non-zero-area elements
+tol = 1e-8;
+
+%% ===== Stiffness matrices =====
+for iel = 1:nel  % Loop over the elements
+    % --- Element parameters ---
+    sctr = Ien(iel,:);  % Control points indexes
+    nn = length(sctr);  % Number of control points in the element
+    nedof = ndof*nn;    % Number of dofs in the element
+    for idof = 1:ndof  % Dofs of control points
+        sctrK(idof:ndof:ndof*(nn-1) + idof) = ndof.*(sctr-1) + idof;
+    end
+    ni = Inn(Ien(iel,1),1);  % Index of the element in parametric domain
+    nj = Inn(Ien(iel,1),2);
+
+    Ke = zeros(nedof, nedof);  % Element stiffness matrix
+    
+    % --- Gauss integration ---
+    if abs(uKnot(ni)-uKnot(ni+1)) > tol && abs(vKnot(nj)-vKnot(nj+1)) > tol  % Check if the current element has nonzero area in the parametric domain
+        nel_nza = nel_nza + 1;
+        detJ2_xi = (uKnot(ni+1) - uKnot(ni))/2;  % Mapping parametric domain into natural domain of [[-1, 1]; [-1, 1]]
+        detJ2_eta = (vKnot(nj+1) - vKnot(nj))/2;
+
+        for iGauss = 1: nGauss  % Loop over the integration points
+            for jGauss = 1: nGauss
+                % Gauss points & weights
+                gpt_xi = Pg(iGauss); gwt_xi = Wg(iGauss);
+                gpt_eta = Pg(jGauss); gwt_eta = Wg(jGauss);
+                
+                % Map the point to parametric domain
+                gpt_xi = (uKnot(ni+1)-uKnot(ni))/2*gpt_xi + (uKnot(ni+1)+uKnot(ni))/2; gwt_xi = gwt_xi*detJ2_xi;
+                gpt_eta = (vKnot(nj+1)-vKnot(nj))/2*gpt_eta + (vKnot(nj+1)+vKnot(nj))/2; gwt_eta = gwt_eta*detJ2_eta;
+                gwt = gwt_xi*gwt_eta;
+                
+                % Kinematic matrices of NURBS shape function
+                [N, ~, ~, dNdx, d2Ndx2, detJ1] = cal_Kine_Shape_2D_2nd(IGA.NURBS,ni,nj,gpt_xi,gpt_eta);
+                
+                % Bending stiffness matrix
+                B0 = zeros(3,ndof*nn);  % Pure membrane
+                B0(1,1:ndof:ndof*nn) = dNdx(:,1)';
+                B0(2,2:ndof:ndof*nn) = dNdx(:,2)';
+                B0(3,1:ndof:ndof*nn) = dNdx(:,2)';
+                B0(3,2:ndof:ndof*nn) = dNdx(:,1)';
+
+                B1 = zeros(3,ndof*nn);  % Pure bending
+                B1(1,3:ndof:ndof*nn) = -d2Ndx2(:,1)';
+                B1(2,3:ndof:ndof*nn) = -d2Ndx2(:,2)';
+                B1(3,3:ndof:ndof*nn) = -2*d2Ndx2(:,3)';
+                
+                Bb = {B0, B1};
+                kb = 0;
+                for i = 1:2
+                    for j = 1:2
+                        kb = kb + Bb{i}'*Db{i,j}*Bb{j}*gwt*detJ1;
+                    end
+                end
+
+                Ke = Ke + kb;
+            end
+        end
+
+        % --- Assemble to global matrix ---
+        [ii, jj] = ndgrid(sctrK, sctrK);
+        idx = (iel-1)*(nedof^2) + (1:nedof^2);
+        I_idx(idx) = ii(:); J_idx(idx) = jj(:); V_idx(idx) = Ke(:);
+    end
+end
+
+% --- Assemble to global matrix ---
+K = sparse(I_idx, J_idx, V_idx, sdof, sdof);
+
+end
