@@ -13,4 +13,4 @@ This code repository contains the following features:
 - Hung Nguyen-Xuan
 
 # References
-Kim Q. Tran, Thoi V. Duong, Hung Nguyen-Xuan, A novel iterative functional approach for higher-order elevation of shear deformation functions: Comprehensive evaluation of single-layer plate theories for functionally graded cubic-symmetric TPMS plates, Computer Methods in Applied Mechanics and Engineering (2026), Submitted.
+Kim Q. Tran, Thoi V. Duong, Hung Nguyen-Xuan, An iterative-order shear deformation model for anisotropic FG-TPMS materials: Single-layer plate theories and isogeometric analysis, Engineering Analysis with Boundary Elements (2026), Revision.
